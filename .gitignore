@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+*.log
+
+# Storage
+storage/*.jpg
+storage/*.png
+storage/*.jpeg
+!storage/.gitkeep
+
+# IDEs
+.vscode/
+.idea/
+EOF
