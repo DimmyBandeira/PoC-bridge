@@ -1,0 +1,18 @@
+{
+  "poc_provider": {
+    "type": "poc",
+    "enabled": false,
+    "appKey": "change-me",
+    "appSecret": "change-me",
+    "dispatch_endpoint": "http://127.0.0.1:9000/api/dispatch",
+    "cancel_endpoint": "http://127.0.0.1:9000/api/cancel"
+  },
+  "whatsapp_mock": {
+    "type": "whatsapp",
+    "enabled": true
+  },
+  "teams_mock": {
+    "type": "teams",
+    "enabled": true
+  }
+}

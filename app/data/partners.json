@@ -1,0 +1,12 @@
+[
+  {
+    "id": "legacy",
+    "name": "Legacy Alerts",
+    "status": "active"
+  },
+  {
+    "id": "partner_a",
+    "name": "Partner A",
+    "status": "active"
+  }
+]

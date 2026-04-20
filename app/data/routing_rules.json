@@ -1,0 +1,17 @@
+[
+  {
+    "partner_id": "legacy",
+    "event_type": "text_alert",
+    "providers": ["poc_provider"]
+  },
+  {
+    "partner_id": "legacy",
+    "event_type": "photo_alert",
+    "providers": ["poc_provider"]
+  },
+  {
+    "partner_id": "partner_a",
+    "event_type": "*",
+    "providers": ["whatsapp_mock", "teams_mock"]
+  }
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "api_key": "alpha-legacy-key",
+    "partner_id": "legacy",
+    "active": true,
+    "description": "Chave alpha para integração legado"
+  },
+  {
+    "api_key": "alpha-partner-a-key",
+    "partner_id": "partner_a",
+    "active": true,
+    "description": "Parceiro de testes A"
+  }
+]
