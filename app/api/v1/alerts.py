@@ -103,6 +103,8 @@ async def cancel_alert(request: Request, cancel_req: CancelAlertRequest):
             return {"status": "success", "message": "Alerta cancelado"}
         else:
             raise HTTPException(status_code=404, detail="Broadcast não encontrado ou já cancelado")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Erro ao cancelar alerta")
         raise HTTPException(status_code=500, detail=str(e))
