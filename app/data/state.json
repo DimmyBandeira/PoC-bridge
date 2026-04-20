@@ -1,0 +1,28 @@
+{
+  "dispatches": {
+    "6677451f-7b3a-4876-b35e-1a486f5771ba": {
+      "partner_id": "legacy",
+      "event_type": "text_alert",
+      "providers": [
+        "poc_provider"
+      ],
+      "payload": {
+        "content": "Teste",
+        "member": "all",
+        "brd_hz": 2
+      }
+    },
+    "bf69c900-707e-442d-8fd9-0284366b71ec": {
+      "partner_id": "partner_a",
+      "event_type": "intrusion",
+      "providers": [
+        "whatsapp_mock",
+        "teams_mock"
+      ],
+      "payload": {
+        "content": "Evento",
+        "member": "all"
+      }
+    }
+  }
+}

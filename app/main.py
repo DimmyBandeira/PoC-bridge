@@ -1,55 +1,56 @@
 import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
-from app.api.v1 import alerts
+from app.api.v1 import alerts, events
+from app.core.config import load_config
+from app.core.logging_config import configure_logging
+from app.services.poc_service import poc_service
 from app.services.storage import ensure_storage_dir
 
-# Configuração de logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+config = load_config()
+configure_logging(log_dir=config.log_dir)
 logger = logging.getLogger(__name__)
 
-# Rate limiter global (5 req/min por IP)
 limiter = Limiter(key_func=get_remote_address)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: garantir que o diretório de storage existe
     ensure_storage_dir()
     logger.info("PoC Bridge API iniciada. Diretório de storage verificado.")
     yield
-    # Shutdown: limpeza opcional
+    await poc_service.close()
     logger.info("PoC Bridge API encerrada.")
+
 
 app = FastAPI(
     title="PoC Bridge API",
     description="Middleware entre WebGuardião e iConvNet PoC",
-    version="1.0.0",
-    lifespan=lifespan
+    version="1.1.0",
+    lifespan=lifespan,
 )
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Configuração CORS (ajuste conforme necessidade)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Em produção, restrinja ao IP do WebGuardião
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Inclui as rotas da API v1
 app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
+app.include_router(events.router, prefix="/api/v1/events", tags=["events"])
+
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, str]:
     return {"status": "ok"}
