@@ -59,9 +59,11 @@ class PoCProvider(BaseProvider):
             data = response.json()
             normalized = self._normalize_provider_response(data)
             logger.info(
-                "poc_dispatch_response code=%s provider_status=%s",
+                "poc_dispatch_response http_status=%s provider_code=%s ok=%s msgid=%s",
                 response.status_code,
-                normalized.get("status"),
+                data.get("code"),
+                normalized.get("ok"),
+                normalized.get("broad_id"),
             )
             return {
                 "provider": self.name,
@@ -129,13 +131,13 @@ class PoCProvider(BaseProvider):
 
     def _build_text_form(self, event: dict[str, Any]) -> dict[str, Any]:
         form = self._build_common_form(event)
-        form.update({"type": 0, "content": event.get("content", "").strip()})
+        form.update({"type": "0", "content": event.get("content", "").strip()})
         return form
 
     def _build_photo_form(self, event: dict[str, Any], remote_file_path: str) -> dict[str, Any]:
         form = self._build_common_form(event)
         text = (event.get("text") or event.get("content") or "").strip()
-        form.update({"type": 2, "content": f"{remote_file_path}|{text}"})
+        form.update({"type": "2", "content": f"{remote_file_path}|{text}"})
         return form
 
     def _normalize_provider_response(self, data: dict[str, Any]) -> dict[str, Any]:

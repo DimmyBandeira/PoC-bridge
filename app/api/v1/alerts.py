@@ -2,6 +2,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -48,8 +49,12 @@ async def send_text_alert(request: Request, alert: TextAlertRequest):
             "message": "Alerta de texto enviado com sucesso",
         }
         if has_failure:
-            raise HTTPException(status_code=502, detail=response_body)
+            response_body["status"] = "partial_failure"
+            response_body["message"] = "Alerta enviado com falha em pelo menos um provider."
+            return JSONResponse(status_code=502, content=response_body)
         return response_body
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except HTTPException:
         raise
     except Exception as exc:
@@ -91,8 +96,12 @@ async def send_photo_alert(
             "message": "Alerta com foto enviado com sucesso",
         }
         if has_failure:
-            raise HTTPException(status_code=502, detail=response_body)
+            response_body["status"] = "partial_failure"
+            response_body["message"] = "Alerta com foto processado com falha em pelo menos um provider."
+            return JSONResponse(status_code=502, content=response_body)
         return response_body
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except HTTPException:
         raise
     except Exception as exc:
