@@ -1,4 +1,6 @@
 import logging
+import os
+import re
 from typing import Any
 
 from app.providers.base import BaseProvider
@@ -18,6 +20,7 @@ class ProviderRegistry:
 
     def _build_providers(self, provider_configs: dict[str, Any]) -> None:
         for provider_name, config in provider_configs.items():
+            config = self._resolve_env_config(config)
             provider_type = (config.get("type") or "").lower()
             if provider_type == "poc":
                 self._providers[provider_name] = PoCProvider(
@@ -31,6 +34,18 @@ class ProviderRegistry:
                 self._providers[provider_name] = TeamsProvider(name=provider_name, config=config)
             else:
                 logger.warning("Provider desconhecido ignorado: %s", provider_name)
+
+    def _resolve_env_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        resolved: dict[str, Any] = {}
+        env_pattern = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
+        for key, value in config.items():
+            if isinstance(value, str):
+                match = env_pattern.match(value)
+                if match:
+                    resolved[key] = os.getenv(match.group(1), "")
+                    continue
+            resolved[key] = value
+        return resolved
 
     def get(self, provider_name: str) -> BaseProvider | None:
         return self._providers.get(provider_name)

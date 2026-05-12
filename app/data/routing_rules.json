@@ -13,5 +13,10 @@
     "partner_id": "partner_a",
     "event_type": "*",
     "providers": ["whatsapp_mock", "teams_mock"]
+  },
+  {
+    "partner_id": "webguardiao",
+    "event_type": "*",
+    "providers": ["poc_provider"]
   }
 ]

@@ -2,10 +2,12 @@
   "poc_provider": {
     "type": "poc",
     "enabled": false,
-    "appKey": "change-me",
-    "appSecret": "change-me",
-    "dispatch_endpoint": "http://127.0.0.1:9000/api/dispatch",
-    "cancel_endpoint": "http://127.0.0.1:9000/api/cancel"
+    "appKey": "${ICONVNET_APP_KEY}",
+    "appSecret": "${ICONVNET_APP_SECRET}",
+    "dispatch_endpoint": "${ICONVNET_DISPATCH_ENDPOINT}",
+    "cancel_endpoint": "${ICONVNET_CANCEL_ENDPOINT}",
+    "upload_endpoint": "${ICONVNET_UPLOAD_ENDPOINT}",
+    "timezone": "America/Sao_Paulo"
   },
   "whatsapp_mock": {
     "type": "whatsapp",

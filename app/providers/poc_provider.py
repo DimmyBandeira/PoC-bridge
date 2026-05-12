@@ -1,4 +1,6 @@
 import logging
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -24,37 +26,48 @@ class PoCProvider(BaseProvider):
                 "broad_id": f"mock-{event.get('event_type', 'event')}",
             }
 
-        timestamp = get_current_timestamp()
-        app_key = self.config.get("appKey", "")
-        app_secret = self.config.get("appSecret", "")
-        sign = generate_sign(app_key=app_key, app_secret=app_secret, timestamp=timestamp)
-
         endpoint = self.config.get("dispatch_endpoint", "")
         if not endpoint:
             raise ValueError("dispatch_endpoint não configurado para PoCProvider")
 
-        body = {
-            "appKey": app_key,
-            "time": timestamp,
-            "sign": sign,
-            "content": event.get("content", ""),
-            "member": event.get("member", "all"),
-            "brd_hz": event.get("brd_hz", 2),
-        }
-
+        logger.info(
+            "poc_dispatch_start provider=%s event_type=%s has_photo=%s",
+            self.name,
+            event.get("event_type"),
+            bool(event.get("photo_path")),
+        )
+        headers = self._build_auth_headers()
         if event.get("photo_path"):
-            body["photo_path"] = event["photo_path"]
-            body["text"] = event.get("text", "")
+            upload_result = await self._upload_photo_if_needed(event, headers)
+            if upload_result is not None:
+                return upload_result
+            form_data = self._build_photo_form(event, event["_remote_file_path"])
+        else:
+            form_data = self._build_text_form(event)
+
+        logger.info(
+            "poc_request_form_ready type=%s member=%s brd_hz=%s",
+            form_data.get("type"),
+            form_data.get("member"),
+            form_data.get("brd_hz"),
+        )
 
         try:
-            response = await self._client.post(endpoint, json=body)
+            response = await self._client.post(endpoint, headers=headers, data=form_data)
             response.raise_for_status()
             data = response.json()
+            normalized = self._normalize_provider_response(data)
+            logger.info(
+                "poc_dispatch_response code=%s provider_status=%s",
+                response.status_code,
+                normalized.get("status"),
+            )
             return {
                 "provider": self.name,
-                "status": "dispatched",
+                "status": normalized.get("status", "dispatched"),
                 "raw": data,
-                "broad_id": data.get("broad_id") or data.get("id") or "unknown",
+                "broad_id": normalized.get("broad_id", "unknown"),
+                "ok": normalized.get("ok", True),
             }
         except httpx.HTTPError:
             logger.exception("Falha de integração no PoCProvider dispatch")
@@ -68,20 +81,13 @@ class PoCProvider(BaseProvider):
         if not endpoint:
             raise ValueError("cancel_endpoint não configurado para PoCProvider")
 
-        timestamp = get_current_timestamp()
-        app_key = self.config.get("appKey", "")
-        app_secret = self.config.get("appSecret", "")
-        sign = generate_sign(app_key=app_key, app_secret=app_secret, timestamp=timestamp)
-
-        body = {
-            "appKey": app_key,
-            "time": timestamp,
-            "sign": sign,
-            "broad_id": payload.get("dispatch_id") or payload.get("broad_id"),
-        }
+        provider_broad_id = payload.get("provider_broad_id") or payload.get("dispatch_id") or payload.get("broad_id")
+        logger.info("poc_cancel_start dispatch_id=%s provider_broad_id=%s", payload.get("dispatch_id"), provider_broad_id)
+        headers = self._build_auth_headers()
+        body = {"broad_id": provider_broad_id}
 
         try:
-            response = await self._client.post(endpoint, json=body)
+            response = await self._client.post(endpoint, headers=headers, data=body)
             response.raise_for_status()
             return {
                 "provider": self.name,
@@ -91,6 +97,76 @@ class PoCProvider(BaseProvider):
         except httpx.HTTPError:
             logger.exception("Falha de integração no PoCProvider cancel")
             raise
+
+    def _build_auth_headers(self) -> dict[str, str]:
+        timestamp = get_current_timestamp()
+        app_key = self.config.get("appKey", "")
+        app_secret = self.config.get("appSecret", "")
+        sign = generate_sign(app_key=app_key, app_secret=app_secret, timestamp=timestamp)
+        headers = {"appKey": app_key, "time": str(timestamp), "sign": sign}
+        logger.info("poc_auth_headers_built appKey_present=%s sign_present=%s", bool(app_key), bool(sign))
+        return headers
+
+    def _build_common_form(self, event: dict[str, Any]) -> dict[str, Any]:
+        now = datetime.now()
+        end = now + timedelta(hours=1)
+        return {
+            "member": event.get("member", "all"),
+            "timezone": self.config.get("timezone", "America/Sao_Paulo"),
+            "brd_hz": event.get("brd_hz", 2),
+            "startT": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "endT": end.strftime("%Y-%m-%d %H:%M:%S"),
+            "wdays": event.get("wdays", "127"),
+            "effect_time": now.strftime("%H:%M"),
+        }
+
+    def _build_text_form(self, event: dict[str, Any]) -> dict[str, Any]:
+        form = self._build_common_form(event)
+        form.update({"type": 0, "content": event.get("content", "")})
+        return form
+
+    def _build_photo_form(self, event: dict[str, Any], remote_file_path: str) -> dict[str, Any]:
+        form = self._build_common_form(event)
+        text = event.get("text") or event.get("content") or ""
+        form.update({"type": 2, "content": f"{remote_file_path}|{text}"})
+        return form
+
+    def _normalize_provider_response(self, data: dict[str, Any]) -> dict[str, Any]:
+        nested_result = data.get("result", {}) if isinstance(data.get("result"), dict) else {}
+        broad_id = data.get("broad_id") or data.get("id") or nested_result.get("broad_id") or nested_result.get("id")
+        return {"status": "dispatched", "ok": bool(broad_id), "broad_id": broad_id}
+
+    async def _upload_photo_if_needed(self, event: dict[str, Any], headers: dict[str, str]) -> dict[str, Any] | None:
+        photo_path = event.get("photo_path", "")
+        if not photo_path:
+            return None
+        file_path = Path(photo_path)
+        if not file_path.exists():
+            return {"provider": self.name, "status": "photo_file_not_found", "ok": False, "message": "Arquivo de foto não encontrado."}
+        if file_path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}:
+            return {"provider": self.name, "status": "photo_extension_not_supported", "ok": False, "message": "Extensão de foto não suportada para upload."}
+        upload_endpoint = self.config.get("upload_endpoint", "")
+        if not upload_endpoint:
+            logger.warning("poc_photo_upload_missing_config provider=%s", self.name)
+            return {
+                "provider": self.name,
+                "status": "photo_upload_not_configured",
+                "ok": False,
+                "message": "Foto recebida pela Bridge, mas upload_endpoint do provider não configurado; imagem não enviada ao iConvNet.",
+            }
+        with file_path.open("rb") as photo_fp:
+            files = {"file": (file_path.name, photo_fp)}
+            response = await self._client.post(upload_endpoint, headers=headers, files=files)
+        response.raise_for_status()
+        data = response.json()
+        remote_file_path = data.get("fileurl") or data.get("url") or data.get("path")
+        if not remote_file_path and isinstance(data.get("result"), dict):
+            remote_file_path = data["result"].get("fileurl") or data["result"].get("url") or data["result"].get("path")
+        if not remote_file_path:
+            return {"provider": self.name, "status": "photo_upload_missing_fileurl", "ok": False, "message": "Upload da foto concluído sem fileurl/path na resposta do provider."}
+        event["_remote_file_path"] = remote_file_path
+        logger.info("poc_photo_uploaded remote_file_path=%s", remote_file_path)
+        return None
 
     async def close(self) -> None:
         await self._client.aclose()

@@ -36,3 +36,5 @@ Data base: 2026-04-20
 - Introduzir `request_id` nos logs.
 - Preparar script simples de deploy/restart no Ubuntu.
 - Adicionar healthcheck expandido (JSON/data/providers).
+
+- [2026-05-12] Prioridade executada: normalização do contrato iConvNet no PoCProvider com suporte configurável de upload de mídia e fallback sem queda da API.
