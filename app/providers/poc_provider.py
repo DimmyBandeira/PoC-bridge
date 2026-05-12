@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +39,7 @@ class PoCProvider(BaseProvider):
         )
         headers = self._build_auth_headers()
         if event.get("photo_path"):
-            upload_result = await self._upload_photo_if_needed(event, headers)
+            upload_result = await self._upload_photo_if_needed(event)
             if upload_result is not None:
                 return upload_result
             form_data = self._build_photo_form(event, event["_remote_file_path"])
@@ -84,8 +84,15 @@ class PoCProvider(BaseProvider):
 
         provider_broad_id = payload.get("provider_broad_id") or payload.get("dispatch_id") or payload.get("broad_id")
         logger.info("poc_cancel_start dispatch_id=%s provider_broad_id=%s", payload.get("dispatch_id"), provider_broad_id)
+        if not provider_broad_id:
+            return {
+                "provider": self.name,
+                "status": "cancel_broad_required",
+                "ok": False,
+                "message": "provider_broad_id ausente para cancelamento.",
+            }
         headers = self._build_auth_headers()
-        body = {"broad_id": provider_broad_id}
+        body = {"broad": provider_broad_id}
 
         try:
             response = await self._client.post(endpoint, headers=headers, data=body)
@@ -109,42 +116,46 @@ class PoCProvider(BaseProvider):
         return headers
 
     def _build_common_form(self, event: dict[str, Any]) -> dict[str, Any]:
-        now = datetime.now()
-        end = now + timedelta(hours=1)
+        today = datetime.now().strftime("%Y-%m-%d")
         return {
             "member": event.get("member", "all"),
             "timezone": self.config.get("timezone", "America/Sao_Paulo"),
-            "brd_hz": event.get("brd_hz", 2),
-            "startT": now.strftime("%Y-%m-%d %H:%M:%S"),
-            "endT": end.strftime("%Y-%m-%d %H:%M:%S"),
-            "wdays": event.get("wdays", "127"),
-            "effect_time": now.strftime("%H:%M"),
+            "brd_hz": str(event.get("brd_hz", 1)),
+            "startT": today,
+            "endT": today,
+            "wdays": str(event.get("wdays", "127")),
+            "effect_time": str(event.get("effect_time", "00:00")),
         }
 
     def _build_text_form(self, event: dict[str, Any]) -> dict[str, Any]:
         form = self._build_common_form(event)
-        form.update({"type": 0, "content": event.get("content", "")})
+        form.update({"type": 0, "content": event.get("content", "").strip()})
         return form
 
     def _build_photo_form(self, event: dict[str, Any], remote_file_path: str) -> dict[str, Any]:
         form = self._build_common_form(event)
-        text = event.get("text") or event.get("content") or ""
+        text = (event.get("text") or event.get("content") or "").strip()
         form.update({"type": 2, "content": f"{remote_file_path}|{text}"})
         return form
 
     def _normalize_provider_response(self, data: dict[str, Any]) -> dict[str, Any]:
         nested_result = data.get("result", {}) if isinstance(data.get("result"), dict) else {}
         broad_id = data.get("broad_id") or data.get("id") or nested_result.get("broad_id") or nested_result.get("id")
-        return {"status": "dispatched", "ok": bool(broad_id), "broad_id": broad_id}
+        code = data.get("code")
+        if code == 0:
+            return {"status": "dispatched" if broad_id else "dispatched_without_broad_id", "ok": True, "broad_id": broad_id}
+        return {"status": "provider_rejected", "ok": False, "broad_id": broad_id}
 
-    async def _upload_photo_if_needed(self, event: dict[str, Any], headers: dict[str, str]) -> dict[str, Any] | None:
+    async def _upload_photo_if_needed(self, event: dict[str, Any]) -> dict[str, Any] | None:
         photo_path = event.get("photo_path", "")
         if not photo_path:
             return None
         file_path = Path(photo_path)
         if not file_path.exists():
             return {"provider": self.name, "status": "photo_file_not_found", "ok": False, "message": "Arquivo de foto não encontrado."}
-        if file_path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}:
+        ext = self._map_upload_ext(file_path.suffix.lower())
+        logger.info("poc_photo_upload_start endpoint_configured=%s ext=%s", bool(self.config.get("upload_endpoint", "")), ext)
+        if not ext:
             return {"provider": self.name, "status": "photo_extension_not_supported", "ok": False, "message": "Extensão de foto não suportada para upload."}
         upload_endpoint = self.config.get("upload_endpoint", "")
         if not upload_endpoint:
@@ -155,18 +166,25 @@ class PoCProvider(BaseProvider):
                 "ok": False,
                 "message": "Foto recebida pela Bridge, mas upload_endpoint do provider não configurado; imagem não enviada ao iConvNet.",
             }
-        with file_path.open("rb") as photo_fp:
-            files = {"file": (file_path.name, photo_fp)}
-            response = await self._client.post(upload_endpoint, headers=headers, files=files)
+        image_bytes = file_path.read_bytes()
+        upload_headers = {"ext": ext, "Use-Type": "tmp"}
+        response = await self._client.post(upload_endpoint, headers=upload_headers, content=image_bytes)
         response.raise_for_status()
         data = response.json()
-        remote_file_path = data.get("fileurl") or data.get("url") or data.get("path")
-        if not remote_file_path and isinstance(data.get("result"), dict):
-            remote_file_path = data["result"].get("fileurl") or data["result"].get("url") or data["result"].get("path")
+        remote_file_path = data.get("Ori_file")
+        logger.info("poc_photo_upload_response has_ori_file=%s status_code=%s", bool(remote_file_path), response.status_code)
         if not remote_file_path:
-            return {"provider": self.name, "status": "photo_upload_missing_fileurl", "ok": False, "message": "Upload da foto concluído sem fileurl/path na resposta do provider."}
+            return {"provider": self.name, "status": "photo_upload_missing_ori_file", "ok": False, "message": "Upload da foto concluído sem Ori_file na resposta do provider.", "raw": data}
         event["_remote_file_path"] = remote_file_path
         logger.info("poc_photo_uploaded remote_file_path=%s", remote_file_path)
+        return None
+
+    def _map_upload_ext(self, suffix: str) -> str | None:
+        normalized = suffix.lower().replace(".", "")
+        if normalized == "jpeg":
+            return "jpg"
+        if normalized in {"jpg", "png", "gif"}:
+            return normalized
         return None
 
     async def close(self) -> None:
