@@ -115,16 +115,16 @@ class PoCService:
                 }
         return payloads
 
-    async def send_text_alert(self, content: str, member: str | None = "all", brd_hz: int | None = 2) -> str:
+    async def send_text_alert(self, content: str, member: str | None = "all", brd_hz: int | None = 2) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "content": content,
             "member": member or "all",
             "brd_hz": brd_hz or 2,
         }
         response = await self.dispatch_event(partner_id="legacy", event_type="text_alert", payload=payload)
-        return response.get("dispatch_id") or ""
+        return response
 
-    async def send_photo_alert(self, photo_path: str, text: str, member: str | None = "all") -> str:
+    async def send_photo_alert(self, photo_path: str, text: str, member: str | None = "all") -> dict[str, Any]:
         payload: dict[str, Any] = {
             "photo_path": photo_path,
             "text": text,
@@ -133,7 +133,7 @@ class PoCService:
             "brd_hz": 2,
         }
         response = await self.dispatch_event(partner_id="legacy", event_type="photo_alert", payload=payload)
-        return response.get("dispatch_id") or ""
+        return response
 
     async def cancel_broadcast(self, broad_id: str) -> bool:
         result = await self.cancel_dispatch(dispatch_id=broad_id)

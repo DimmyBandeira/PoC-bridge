@@ -140,7 +140,13 @@ class PoCProvider(BaseProvider):
 
     def _normalize_provider_response(self, data: dict[str, Any]) -> dict[str, Any]:
         nested_result = data.get("result", {}) if isinstance(data.get("result"), dict) else {}
-        broad_id = data.get("broad_id") or data.get("id") or nested_result.get("broad_id") or nested_result.get("id")
+        broad_id = (
+            data.get("broad_id")
+            or data.get("id")
+            or nested_result.get("broad_id")
+            or nested_result.get("id")
+            or nested_result.get("msgid")
+        )
         code = data.get("code")
         if code == 0:
             return {"status": "dispatched" if broad_id else "dispatched_without_broad_id", "ok": True, "broad_id": broad_id}

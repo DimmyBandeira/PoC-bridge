@@ -11,6 +11,7 @@ storage/*.jpg
 storage/*.png
 storage/*.jpeg
 !storage/.gitkeep
+app/data/state.json
 
 # IDEs
 .vscode/

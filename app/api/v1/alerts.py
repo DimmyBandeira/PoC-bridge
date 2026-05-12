@@ -30,18 +30,26 @@ class CancelAlertRequest(BaseModel):
 @limiter.limit("5/minute")
 async def send_text_alert(request: Request, alert: TextAlertRequest):
     try:
-        broad_id = await poc_service.send_text_alert(
+        dispatch_result = await poc_service.send_text_alert(
             content=alert.content,
             member=alert.member,
             brd_hz=alert.brd_hz,
         )
+        provider_results = dispatch_result.get("results", [])
+        broad_id = next((item.get("broad_id") for item in provider_results if item.get("broad_id")), dispatch_result.get("dispatch_id"))
+        has_failure = any(item.get("ok") is False for item in provider_results)
         cache_key = f"text_alert_{alert.content}_{alert.member}"
-        return {
+        response_body = {
             "status": "success",
             "broad_id": broad_id,
             "cache_key": cache_key,
+            "dispatch_result": dispatch_result,
+            "provider_results": provider_results,
             "message": "Alerta de texto enviado com sucesso",
         }
+        if has_failure:
+            raise HTTPException(status_code=502, detail=response_body)
+        return response_body
     except HTTPException:
         raise
     except Exception as exc:
@@ -64,19 +72,27 @@ async def send_photo_alert(
         photo_path = await save_uploaded_photo(file)
         logger.info("Foto salva em: %s", photo_path)
 
-        broad_id = await poc_service.send_photo_alert(
+        dispatch_result = await poc_service.send_photo_alert(
             photo_path=photo_path,
             text=text,
             member=member,
         )
+        provider_results = dispatch_result.get("results", [])
+        broad_id = next((item.get("broad_id") for item in provider_results if item.get("broad_id")), dispatch_result.get("dispatch_id"))
+        has_failure = any(item.get("ok") is False for item in provider_results)
         cache_key = f"photo_alert_{text}_{member}"
-        return {
+        response_body = {
             "status": "success",
             "broad_id": broad_id,
             "cache_key": cache_key,
             "photo_path": photo_path,
+            "dispatch_result": dispatch_result,
+            "provider_results": provider_results,
             "message": "Alerta com foto enviado com sucesso",
         }
+        if has_failure:
+            raise HTTPException(status_code=502, detail=response_body)
+        return response_body
     except HTTPException:
         raise
     except Exception as exc:
@@ -104,4 +120,3 @@ async def cancel_alert(request: Request, cancel_req: CancelAlertRequest):
     except Exception as exc:
         logger.exception("Erro ao cancelar alerta")
         raise HTTPException(status_code=500, detail="Falha ao cancelar alerta") from exc
-
