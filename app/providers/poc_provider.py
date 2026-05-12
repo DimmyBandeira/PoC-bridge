@@ -16,6 +16,7 @@ class PoCProvider(BaseProvider):
     def __init__(self, name: str, config: dict[str, Any], timeout_seconds: float = 8.0) -> None:
         super().__init__(name=name, config=config)
         self._client = httpx.AsyncClient(timeout=timeout_seconds)
+        self._closed = False
 
     async def dispatch(self, event: dict[str, Any]) -> dict[str, Any]:
         if not self.config.get("enabled", True):
@@ -169,4 +170,7 @@ class PoCProvider(BaseProvider):
         return None
 
     async def close(self) -> None:
+        if self._closed or self._client.is_closed:
+            return
+        self._closed = True
         await self._client.aclose()

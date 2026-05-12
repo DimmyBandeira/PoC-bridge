@@ -105,7 +105,3 @@ async def cancel_alert(request: Request, cancel_req: CancelAlertRequest):
         logger.exception("Erro ao cancelar alerta")
         raise HTTPException(status_code=500, detail="Falha ao cancelar alerta") from exc
 
-
-@router.on_event("shutdown")
-async def shutdown_event():
-    await poc_service.close()

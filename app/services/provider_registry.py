@@ -16,6 +16,7 @@ class ProviderRegistry:
     def __init__(self, provider_configs: dict[str, Any], timeout_seconds: float = 8.0) -> None:
         self._providers: dict[str, BaseProvider] = {}
         self._timeout_seconds = timeout_seconds
+        self._closed = False
         self._build_providers(provider_configs)
 
     def _build_providers(self, provider_configs: dict[str, Any]) -> None:
@@ -51,7 +52,16 @@ class ProviderRegistry:
         return self._providers.get(provider_name)
 
     async def close(self) -> None:
+        if self._closed:
+            logger.debug("ProviderRegistry.close ignorado: já fechado.")
+            return
+        self._closed = True
         for provider in self._providers.values():
             close_fn = getattr(provider, "close", None)
             if callable(close_fn):
-                await close_fn()
+                try:
+                    await close_fn()
+                except RuntimeError as exc:
+                    logger.warning("Falha controlada ao fechar provider %s: %s", provider.name, exc)
+                except Exception:
+                    logger.exception("Erro ao fechar provider %s", provider.name)

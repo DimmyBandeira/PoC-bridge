@@ -19,6 +19,7 @@ class IconvnetAiEventProvider:
         self.config = config
         self._client = httpx.AsyncClient(timeout=timeout_seconds)
         self._max_bytes = int(config.get("max_image_size_bytes", 2 * 1024 * 1024))
+        self._closed = False
 
     async def dispatch_photo_base64(self, photo_path: str, alarm_name: str | None, dev_name: str | None) -> dict[str, Any]:
         logger.info("iconvnet_ai_event_start mode=base64 provider=%s", self.name)
@@ -76,4 +77,7 @@ class IconvnetAiEventProvider:
         return {"provider": self.name, "status": "dispatched" if ok else "provider_rejected", "ok": ok, "code": code, "message": data.get("message"), "raw": data}
 
     async def close(self) -> None:
+        if self._closed or self._client.is_closed:
+            return
+        self._closed = True
         await self._client.aclose()

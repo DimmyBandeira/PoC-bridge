@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import uuid
 from typing import Any
 
@@ -31,6 +32,7 @@ class PoCService:
             timeout_seconds=self._config.poc_timeout_seconds,
         )
         self.dispatch_service = DispatchService(self.provider_registry)
+        self._closed = False
 
     def _save_state(self) -> None:
         self._storage.write_json("state.json", self._state)
@@ -151,7 +153,17 @@ class PoCService:
         return self.auth_service.authenticate(api_key)
 
     async def close(self) -> None:
-        await self.provider_registry.close()
+        if self._closed:
+            logger.debug("PoCService.close ignorado: já fechado.")
+            return
+        self._closed = True
+        try:
+            await self.provider_registry.close()
+        except asyncio.CancelledError:
+            logger.info("PoCService.close cancelado durante shutdown.")
+            raise
+        except Exception:
+            logger.exception("Erro ao fechar PoCService.")
 
 
 poc_service = PoCService()

@@ -16,6 +16,7 @@ class IconvnetTaskTicketProvider:
         self.name = name
         self.config = config
         self._client = httpx.AsyncClient(timeout=timeout_seconds)
+        self._closed = False
 
     async def create_ticket(
         self,
@@ -69,4 +70,7 @@ class IconvnetTaskTicketProvider:
         return {"provider": self.name, "status": "created" if ok else "provider_rejected", "ok": ok, "code": code, "message": data.get("message"), "raw": data}
 
     async def close(self) -> None:
+        if self._closed or self._client.is_closed:
+            return
+        self._closed = True
         await self._client.aclose()
