@@ -7,7 +7,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.api.v1 import alerts, events
+from app.api.v1 import alerts, events, iconvnet_test
 from app.core.config import load_config
 from app.core.logging_config import configure_logging
 from app.services.poc_service import poc_service
@@ -49,6 +49,7 @@ app.add_middleware(
 
 app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
 app.include_router(events.router, prefix="/api/v1/events", tags=["events"])
+app.include_router(iconvnet_test.router, prefix="/api/v1/iconvnet-test", tags=["iconvnet-test"])
 
 
 @app.get("/health")

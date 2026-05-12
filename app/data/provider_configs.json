@@ -9,6 +9,21 @@
     "upload_endpoint": "${ICONVNET_UPLOAD_ENDPOINT}",
     "timezone": "America/Sao_Paulo"
   },
+  "iconvnet_ai_event": {
+    "type": "iconvnet_ai_event",
+    "enabled": true,
+    "appKey": "${ICONVNET_APP_KEY}",
+    "appSecret": "${ICONVNET_APP_SECRET}",
+    "ai_event_endpoint": "${ICONVNET_AI_EVENT_ENDPOINT}"
+  },
+  "iconvnet_task_ticket": {
+    "type": "iconvnet_task_ticket",
+    "enabled": true,
+    "appKey": "${ICONVNET_APP_KEY}",
+    "appSecret": "${ICONVNET_APP_SECRET}",
+    "task_ticket_endpoint": "${ICONVNET_TASK_TICKET_ENDPOINT}",
+    "default_uid": "${ICONVNET_TASK_UID}"
+  },
   "whatsapp_mock": {
     "type": "whatsapp",
     "enabled": true
