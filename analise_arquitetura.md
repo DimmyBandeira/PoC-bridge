@@ -39,3 +39,5 @@ Data da análise: 2026-04-20
 1. Ativar `PoCProvider` em ambiente homologado com endpoints reais.
 2. Adicionar testes automatizados de integração para `events/dispatch` e `alerts/photo`.
 3. Evoluir rastreabilidade de logs com `request_id` por requisição.
+
+- 2026-05-12: Correção incremental na integração iConvNet/PoC: autenticação migrada para headers, envio em form-data e tratamento controlado para foto sem upload_endpoint configurado.

@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import uuid
 from typing import Any
 
@@ -31,6 +32,7 @@ class PoCService:
             timeout_seconds=self._config.poc_timeout_seconds,
         )
         self.dispatch_service = DispatchService(self.provider_registry)
+        self._closed = False
 
     def _save_state(self) -> None:
         self._storage.write_json("state.json", self._state)
@@ -56,6 +58,7 @@ class PoCService:
             "event_type": event_type,
             "providers": providers,
             "payload": payload,
+            "results": results,
         }
         self._save_state()
 
@@ -66,30 +69,62 @@ class PoCService:
         if not dispatch_data:
             return {"dispatch_id": dispatch_id, "canceled": False, "results": []}
 
-        payload = {
-            "dispatch_id": dispatch_id,
-            "broad_id": dispatch_data.get("payload", {}).get("broad_id"),
-        }
-        results = await self.dispatch_service.cancel(
-            payload=payload,
-            provider_names=dispatch_data.get("providers", []),
-        )
+        provider_payloads = self._build_cancel_payloads(dispatch_id, dispatch_data)
+        results: list[dict[str, Any]] = []
+        for provider_name in dispatch_data.get("providers", []):
+            payload = provider_payloads.get(provider_name)
+            if payload is None:
+                logger.warning("Cancel sem broad_id para provider=%s dispatch_id=%s", provider_name, dispatch_id)
+                results.append(
+                    {
+                        "provider": provider_name,
+                        "status": "missing_provider_broad_id",
+                        "ok": False,
+                        "message": "Não foi encontrado broad_id para este provider no histórico do dispatch.",
+                    }
+                )
+                continue
+            provider_result = await self.dispatch_service.cancel(payload=payload, provider_names=[provider_name])
+            results.extend(provider_result)
 
         self._state.get("dispatches", {}).pop(dispatch_id, None)
         self._save_state()
 
         return {"dispatch_id": dispatch_id, "canceled": True, "results": results}
 
-    async def send_text_alert(self, content: str, member: str | None = "all", brd_hz: int | None = 2) -> str:
+    def _build_cancel_payloads(self, dispatch_id: str, dispatch_data: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        payloads: dict[str, dict[str, Any]] = {}
+        fallback_broad_id = dispatch_data.get("payload", {}).get("broad_id")
+        for result in dispatch_data.get("results", []):
+            provider_name = result.get("provider")
+            if not provider_name:
+                continue
+            nested_result = result.get("result", {}) if isinstance(result.get("result"), dict) else {}
+            provider_broad_id = (
+                result.get("broad_id")
+                or result.get("id")
+                or nested_result.get("broad_id")
+                or nested_result.get("id")
+                or fallback_broad_id
+            )
+            if provider_broad_id:
+                payloads[provider_name] = {
+                    "dispatch_id": dispatch_id,
+                    "provider_broad_id": provider_broad_id,
+                    "broad_id": provider_broad_id,
+                }
+        return payloads
+
+    async def send_text_alert(self, content: str, member: str | None = "all", brd_hz: int | None = 2) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "content": content,
             "member": member or "all",
             "brd_hz": brd_hz or 2,
         }
         response = await self.dispatch_event(partner_id="legacy", event_type="text_alert", payload=payload)
-        return response.get("dispatch_id") or ""
+        return response
 
-    async def send_photo_alert(self, photo_path: str, text: str, member: str | None = "all") -> str:
+    async def send_photo_alert(self, photo_path: str, text: str, member: str | None = "all") -> dict[str, Any]:
         payload: dict[str, Any] = {
             "photo_path": photo_path,
             "text": text,
@@ -98,7 +133,7 @@ class PoCService:
             "brd_hz": 2,
         }
         response = await self.dispatch_event(partner_id="legacy", event_type="photo_alert", payload=payload)
-        return response.get("dispatch_id") or ""
+        return response
 
     async def cancel_broadcast(self, broad_id: str) -> bool:
         result = await self.cancel_dispatch(dispatch_id=broad_id)
@@ -118,7 +153,17 @@ class PoCService:
         return self.auth_service.authenticate(api_key)
 
     async def close(self) -> None:
-        await self.provider_registry.close()
+        if self._closed:
+            logger.debug("PoCService.close ignorado: já fechado.")
+            return
+        self._closed = True
+        try:
+            await self.provider_registry.close()
+        except asyncio.CancelledError:
+            logger.info("PoCService.close cancelado durante shutdown.")
+            raise
+        except Exception:
+            logger.exception("Erro ao fechar PoCService.")
 
 
 poc_service = PoCService()

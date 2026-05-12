@@ -92,6 +92,43 @@ curl -s -X POST http://127.0.0.1:3000/api/v1/events/cancel \
   -d '{"dispatch_id":"<UUID-retornado-no-dispatch>"}'
 ```
 
+## Testes no Windows (PowerShell)
+
+- Para payload JSON, prefira `Invoke-RestMethod` com `ConvertTo-Json`.
+- Para upload multipart (`/alerts/photo`), use `curl.exe -F`.
+- Para validação real com iConvNet externo, suba sem `--reload`.
+
+### Texto (JSON com Invoke-RestMethod)
+
+```powershell
+$body = @{
+  partner_id = "legacy"
+  event_type = "text_alert"
+  payload = @{
+    content = "Teste texto WebGuardiao"
+    member = "all"
+    brd_hz = 1
+  }
+} | ConvertTo-Json -Depth 5
+
+Invoke-RestMethod `
+  -Method Post `
+  -Uri "http://127.0.0.1:3000/api/v1/events/dispatch" `
+  -Headers @{ "X-API-Key" = "alpha-legacy-key" } `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+### Foto (multipart com curl.exe)
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:3000/api/v1/alerts/photo" `
+  -H "X-API-Key: alpha-legacy-key" `
+  -F "file=@C:\api_HT-PoC\teste.jpg" `
+  -F "text=ALERTA: FOTO VIA API FASTAPI" `
+  -F "member=all"
+```
+
 ## Plano curto de validação manual
 
 1. Subir aplicação no Ubuntu e validar `GET /health`.

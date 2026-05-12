@@ -1,4 +1,6 @@
 import logging
+import os
+import re
 from typing import Any
 
 from app.providers.base import BaseProvider
@@ -14,10 +16,12 @@ class ProviderRegistry:
     def __init__(self, provider_configs: dict[str, Any], timeout_seconds: float = 8.0) -> None:
         self._providers: dict[str, BaseProvider] = {}
         self._timeout_seconds = timeout_seconds
+        self._closed = False
         self._build_providers(provider_configs)
 
     def _build_providers(self, provider_configs: dict[str, Any]) -> None:
         for provider_name, config in provider_configs.items():
+            config = self._resolve_env_config(config)
             provider_type = (config.get("type") or "").lower()
             if provider_type == "poc":
                 self._providers[provider_name] = PoCProvider(
@@ -32,11 +36,32 @@ class ProviderRegistry:
             else:
                 logger.warning("Provider desconhecido ignorado: %s", provider_name)
 
+    def _resolve_env_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        resolved: dict[str, Any] = {}
+        env_pattern = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
+        for key, value in config.items():
+            if isinstance(value, str):
+                match = env_pattern.match(value)
+                if match:
+                    resolved[key] = os.getenv(match.group(1), "")
+                    continue
+            resolved[key] = value
+        return resolved
+
     def get(self, provider_name: str) -> BaseProvider | None:
         return self._providers.get(provider_name)
 
     async def close(self) -> None:
+        if self._closed:
+            logger.debug("ProviderRegistry.close ignorado: já fechado.")
+            return
+        self._closed = True
         for provider in self._providers.values():
             close_fn = getattr(provider, "close", None)
             if callable(close_fn):
-                await close_fn()
+                try:
+                    await close_fn()
+                except RuntimeError as exc:
+                    logger.warning("Falha controlada ao fechar provider %s: %s", provider.name, exc)
+                except Exception:
+                    logger.exception("Erro ao fechar provider %s", provider.name)

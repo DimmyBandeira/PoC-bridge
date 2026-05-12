@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -25,7 +26,11 @@ async def lifespan(app: FastAPI):
     ensure_storage_dir()
     logger.info("PoC Bridge API iniciada. Diretório de storage verificado.")
     yield
-    await poc_service.close()
+    try:
+        await poc_service.close()
+    except asyncio.CancelledError:
+        logger.info("Shutdown cancelado durante encerramento da aplicação.")
+        raise
     logger.info("PoC Bridge API encerrada.")
 
 
